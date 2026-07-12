@@ -1,29 +1,37 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
+  BookOpen,
   Check,
   ChevronRight,
   CircleDot,
   Globe2,
   Info,
   LocateFixed,
+  Minus,
+  Plus,
+  RotateCcw,
   Search,
   X,
   Zap,
 } from "lucide-react";
-import GlobeScene from "./globe-scene";
+import GlobeScene, { type GlobeSceneHandle } from "./globe-scene";
 import { DATA_CENTERS, REGIONS, type DataCenter } from "./data-centers";
 
 const formatMw = (mw: number) => mw >= 1000 ? `${(mw / 1000).toFixed(mw % 1000 ? 1 : 0)} GW` : `${mw} MW`;
+const flagPath = (countryCode: string) => `/flags/${countryCode.toLowerCase()}.svg`;
 
 export default function Home() {
   const [selected, setSelected] = useState<DataCenter>(DATA_CENTERS[0]);
   const [region, setRegion] = useState<(typeof REGIONS)[number]>("All regions");
   const [query, setQuery] = useState("");
   const [panelOpen, setPanelOpen] = useState(true);
-  const [intro, setIntro] = useState(true);
+  const [intro, setIntro] = useState(false);
+  const globeRef = useRef<GlobeSceneHandle>(null);
 
   const filtered = useMemo(() => DATA_CENTERS.filter((dc) => {
     const regionMatch = region === "All regions" || dc.region === region;
@@ -41,7 +49,7 @@ export default function Home() {
 
   return (
     <main className="app-shell">
-      <GlobeScene data={filtered} selected={selected} onSelect={choose} />
+      <GlobeScene ref={globeRef} data={filtered} selected={selected} onSelect={choose} />
       <div className="ambient-grid" aria-hidden="true" />
 
       <header className="topbar">
@@ -56,7 +64,10 @@ export default function Home() {
           <span className="top-divider" />
           <span>{DATA_CENTERS.length} MAJOR CAMPUSES</span>
         </div>
-        <button className="about-button" onClick={() => setIntro(true)}><Info size={16} /> About</button>
+        <nav className="header-actions" aria-label="Atlas navigation">
+          <Link className="guide-button" href="/guide"><BookOpen size={15} /> MW &amp; GW guide</Link>
+          <button className="about-button" onClick={() => setIntro(true)}><Info size={16} /> About</button>
+        </nav>
       </header>
 
       <section className="hero-copy" aria-label="Introduction">
@@ -89,7 +100,7 @@ export default function Home() {
           {filtered.map((dc) => (
             <button className={`center-row ${selected.id === dc.id ? "selected" : ""}`} key={dc.id} onClick={() => choose(dc)}>
               <span className="row-number">{String(dc.rank).padStart(2, "0")}</span>
-              <span className="country-flag" role="img" aria-label={dc.country}>{dc.flag}</span>
+              <span className="country-flag"><Image src={flagPath(dc.countryCode)} alt={`${dc.country} flag`} width={28} height={21} /></span>
               <span className="row-main">
                 <strong>{dc.name}</strong>
                 <small>{dc.city} / {dc.operator}</small>
@@ -113,7 +124,7 @@ export default function Home() {
         </div>
         <p className="micro-label">SELECTED AI CAMPUS</p>
         <div className="campus-title-row">
-          <span className="detail-flag" role="img" aria-label={selected.country}>{selected.flag}</span>
+          <span className="detail-flag"><Image src={flagPath(selected.countryCode)} alt={`${selected.country} flag`} width={42} height={32} /></span>
           <div><h2>{selected.name}</h2><p className="operator">{selected.operator}</p></div>
         </div>
         <div className="campus-facts">
@@ -128,6 +139,12 @@ export default function Home() {
       <div className="globe-controls">
         <span><span className="mouse-icon" /> DRAG TO ROTATE</span>
         <span><span className="scroll-icon" /> SCROLL TO ZOOM</span>
+      </div>
+
+      <div className="zoom-tools" aria-label="Globe zoom controls">
+        <button onClick={() => globeRef.current?.zoomIn()} aria-label="Zoom in"><Plus size={17} /></button>
+        <button onClick={() => globeRef.current?.zoomOut()} aria-label="Zoom out"><Minus size={17} /></button>
+        <button onClick={() => globeRef.current?.reset()} aria-label="Reset globe view"><RotateCcw size={15} /></button>
       </div>
 
       <footer>

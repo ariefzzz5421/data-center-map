@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import * as THREE from "three";
 import type { DataCenter } from "./data-centers";
 
 type Props = { data: DataCenter[]; selected: DataCenter; onSelect: (dc: DataCenter) => void };
+export type GlobeSceneHandle = { zoomIn: () => void; zoomOut: () => void; reset: () => void };
+type SceneApi = {
+  focus: (dc: DataCenter) => void;
+  update: (d: DataCenter[]) => void;
+  zoom: (amount: number) => void;
+  reset: () => void;
+};
 
 const GLOBE_RADIUS = 2;
 
@@ -14,11 +21,18 @@ function positionFromLatLng(lat: number, lng: number, radius = GLOBE_RADIUS) {
   return new THREE.Vector3(-radius * Math.sin(phi) * Math.cos(theta), radius * Math.cos(phi), radius * Math.sin(phi) * Math.sin(theta));
 }
 
-export default function GlobeScene({ data, selected, onSelect }: Props) {
+const GlobeScene = forwardRef<GlobeSceneHandle, Props>(function GlobeScene({ data, selected, onSelect }, ref) {
   const mountRef = useRef<HTMLDivElement>(null);
-  const apiRef = useRef<{ focus: (dc: DataCenter) => void; update: (d: DataCenter[]) => void } | null>(null);
+  const apiRef = useRef<SceneApi | null>(null);
+  const initialDataRef = useRef(data);
   const callbackRef = useRef(onSelect);
   callbackRef.current = onSelect;
+
+  useImperativeHandle(ref, () => ({
+    zoomIn: () => apiRef.current?.zoom(-0.85),
+    zoomOut: () => apiRef.current?.zoom(0.85),
+    reset: () => apiRef.current?.reset(),
+  }), []);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -81,29 +95,38 @@ export default function GlobeScene({ data, selected, onSelect }: Props) {
     globeGroup.add(markerGroup);
     let markerMeshes: THREE.Mesh[] = [];
     const rebuildMarkers = (items: DataCenter[]) => {
+      markerGroup.traverse((object) => {
+        if (!(object instanceof THREE.Mesh)) return;
+        object.geometry.dispose();
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        materials.forEach((material) => material.dispose());
+      });
       markerGroup.clear();
       markerMeshes = [];
-      items.forEach((dc) => {
-        const p = positionFromLatLng(dc.lat, dc.lng, GLOBE_RADIUS + 0.025);
+      items.forEach((dc, index) => {
+        const p = positionFromLatLng(dc.lat, dc.lng, GLOBE_RADIUS + 0.018 + (index % 3) * 0.004);
         const marker = new THREE.Group();
         marker.position.copy(p);
         marker.lookAt(p.clone().multiplyScalar(2));
-        marker.scale.setScalar(THREE.MathUtils.clamp(Math.sqrt(dc.capacityMw / 350), 0.72, 1.9));
+        marker.userData.baseScale = THREE.MathUtils.clamp(Math.sqrt(dc.capacityMw / 1000), 0.62, 1.08);
+        marker.scale.setScalar(marker.userData.baseScale);
         const color = dc.status === "Operational" ? 0xb6ffd4 : dc.status === "Building" ? 0xffc66d : 0xa8c8ff;
-        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.15, 8), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.82 }));
+        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.105, 8), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7 }));
         stem.rotation.x = Math.PI / 2;
-        stem.position.z = 0.07;
-        const core = new THREE.Mesh(new THREE.SphereGeometry(0.038, 14, 14), new THREE.MeshBasicMaterial({ color }));
-        core.position.z = 0.155;
-        core.userData.dc = dc;
-        const ring = new THREE.Mesh(new THREE.RingGeometry(0.055, 0.072, 24), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
-        ring.position.z = 0.157;
-        marker.add(stem, core, ring);
+        stem.position.z = 0.049;
+        const core = new THREE.Mesh(new THREE.SphereGeometry(0.024, 14, 14), new THREE.MeshBasicMaterial({ color }));
+        core.position.z = 0.106;
+        const ring = new THREE.Mesh(new THREE.RingGeometry(0.035, 0.047, 24), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.42, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+        ring.position.z = 0.108;
+        const hitArea = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 10), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
+        hitArea.position.z = 0.106;
+        hitArea.userData.dc = dc;
+        marker.add(stem, core, ring, hitArea);
         markerGroup.add(marker);
-        markerMeshes.push(core);
+        markerMeshes.push(hitArea);
       });
     };
-    rebuildMarkers(data);
+    rebuildMarkers(initialDataRef.current);
 
     let targetRotX = 0.16;
     let targetRotY = -1.15;
@@ -143,7 +166,7 @@ export default function GlobeScene({ data, selected, onSelect }: Props) {
     };
     const onWheel = (event: WheelEvent) => {
       event.preventDefault(); autoRotate = false;
-      targetDistance = THREE.MathUtils.clamp(targetDistance + event.deltaY * 0.0035, 4.6, 10.5);
+      targetDistance = THREE.MathUtils.clamp(targetDistance + event.deltaY * 0.0035, 2.55, 15.5);
     };
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
     renderer.domElement.addEventListener("pointermove", onPointerMove);
@@ -154,10 +177,20 @@ export default function GlobeScene({ data, selected, onSelect }: Props) {
       const theta = (dc.lng + 180) * Math.PI / 180;
       targetRotX = dc.lat * Math.PI / 180;
       targetRotY = Math.PI / 2 - theta;
-      targetDistance = 6.15;
+      targetDistance = 4.35;
       autoRotate = false;
     };
-    apiRef.current = { focus, update: rebuildMarkers };
+    const zoom = (amount: number) => {
+      targetDistance = THREE.MathUtils.clamp(targetDistance + amount, 2.55, 15.5);
+      autoRotate = false;
+    };
+    const reset = () => {
+      targetRotX = 0.16;
+      targetRotY = -1.15;
+      targetDistance = 7.6;
+      autoRotate = true;
+    };
+    apiRef.current = { focus, update: rebuildMarkers, zoom, reset };
 
     const clock = new THREE.Clock();
     let frame = 0;
@@ -172,6 +205,9 @@ export default function GlobeScene({ data, selected, onSelect }: Props) {
         const ring = (marker as THREE.Group).children[2] as THREE.Mesh;
         const pulse = 1 + Math.sin(clock.elapsedTime * 2.1 + i * 0.7) * 0.16;
         ring.scale.setScalar(pulse);
+        const baseScale = (marker as THREE.Group).userData.baseScale as number;
+        const distanceScale = THREE.MathUtils.clamp(camera.position.z / 7.6, 0.46, 1);
+        (marker as THREE.Group).scale.setScalar(baseScale * distanceScale);
       });
       stars.rotation.y += delta * 0.0018;
       renderer.render(scene, camera);
@@ -198,4 +234,6 @@ export default function GlobeScene({ data, selected, onSelect }: Props) {
   useEffect(() => { apiRef.current?.update(data); }, [data]);
   useEffect(() => { apiRef.current?.focus(selected); }, [selected]);
   return <div className="globe-scene" ref={mountRef} aria-label="Interactive 3D globe showing major AI data center locations" />;
-}
+});
+
+export default GlobeScene;
