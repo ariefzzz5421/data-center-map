@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
+  ArrowDownWideNarrow,
   BookOpen,
+  Building2,
   Check,
   ChevronRight,
   CircleDot,
@@ -16,6 +18,8 @@ import {
   Plus,
   RotateCcw,
   Search,
+  Server,
+  Trophy,
   X,
   Zap,
 } from "lucide-react";
@@ -24,6 +28,8 @@ import { DATA_CENTERS, REGIONS, type DataCenter } from "./data-centers";
 
 const formatMw = (mw: number) => mw >= 1000 ? `${(mw / 1000).toFixed(mw % 1000 ? 1 : 0)} GW` : `${mw} MW`;
 const flagPath = (countryCode: string) => `/flags/${countryCode.toLowerCase()}.svg`;
+type PowerBand = "all" | "gigawatt" | "large" | "under500";
+type SortMode = "largest" | "smallest";
 
 export default function Home() {
   const [selected, setSelected] = useState<DataCenter>(DATA_CENTERS[0]);
@@ -31,13 +37,23 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [panelOpen, setPanelOpen] = useState(true);
   const [intro, setIntro] = useState(false);
+  const [powerBand, setPowerBand] = useState<PowerBand>("all");
+  const [sortMode, setSortMode] = useState<SortMode>("largest");
   const globeRef = useRef<GlobeSceneHandle>(null);
 
-  const filtered = useMemo(() => DATA_CENTERS.filter((dc) => {
-    const regionMatch = region === "All regions" || dc.region === region;
+  const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return regionMatch && `${dc.name} ${dc.operator} ${dc.city} ${dc.country} ${dc.capacityLabel}`.toLowerCase().includes(q);
-  }), [query, region]);
+    const matches = DATA_CENTERS.filter((dc) => {
+      const regionMatch = region === "All regions" || dc.region === region;
+      const queryMatch = `${dc.name} ${dc.operator} ${dc.city} ${dc.country} ${dc.capacityLabel}`.toLowerCase().includes(q);
+      const powerMatch = powerBand === "all"
+        || (powerBand === "gigawatt" && dc.capacityMw >= 1000)
+        || (powerBand === "large" && dc.capacityMw >= 500 && dc.capacityMw < 1000)
+        || (powerBand === "under500" && dc.capacityMw < 500);
+      return regionMatch && queryMatch && powerMatch;
+    });
+    return [...matches].sort((a, b) => sortMode === "largest" ? b.capacityMw - a.capacityMw : a.capacityMw - b.capacityMw);
+  }, [powerBand, query, region, sortMode]);
 
   const countryCount = useMemo(() => new Set(filtered.map((dc) => dc.countryCode)).size, [filtered]);
 
@@ -65,7 +81,9 @@ export default function Home() {
           <span>{DATA_CENTERS.length} MAJOR CAMPUSES</span>
         </div>
         <nav className="header-actions" aria-label="Atlas navigation">
-          <Link className="guide-button" href="/guide"><BookOpen size={15} /> MW &amp; GW guide</Link>
+          <Link className="nav-link" href="/top-data-centers"><Trophy size={15} /> Top List Data Center</Link>
+          <Link className="nav-link" href="/inside-data-center"><Server size={15} /> Inside Data Center</Link>
+          <Link className="nav-link guide-button" href="/guide"><BookOpen size={15} /> MW &amp; GW guide</Link>
           <button className="about-button" onClick={() => setIntro(true)}><Info size={16} /> About</button>
         </nav>
       </header>
@@ -91,11 +109,16 @@ export default function Home() {
           {query && <button onClick={() => setQuery("")} aria-label="Clear search"><X size={14} /></button>}
         </label>
 
+        <div className="power-controls" aria-label="Capacity filters">
+          <label><Building2 size={13} /><span className="sr-only">Power capacity</span><select value={powerBand} onChange={(event) => setPowerBand(event.target.value as PowerBand)}><option value="all">All power sizes</option><option value="gigawatt">1 GW and above</option><option value="large">500–999 MW</option><option value="under500">Under 500 MW</option></select></label>
+          <label><ArrowDownWideNarrow size={13} /><span className="sr-only">Sort capacity</span><select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}><option value="largest">Biggest MW first</option><option value="smallest">Smallest MW first</option></select></label>
+        </div>
+
         <div className="region-tabs" aria-label="Filter by region">
           {REGIONS.map((item) => <button key={item} className={region === item ? "active" : ""} onClick={() => setRegion(item)}>{item}</button>)}
         </div>
 
-        <div className="result-meta"><span>{filtered.length} CAMPUSES / {countryCount} COUNTRIES</span><span>POWER</span></div>
+        <div className="result-meta"><span>{filtered.length} CAMPUSES / {countryCount} COUNTRIES</span><span>{sortMode === "largest" ? "BIGGEST MW ↓" : "SMALLEST MW ↑"}</span></div>
         <div className="center-list">
           {filtered.map((dc) => (
             <button className={`center-row ${selected.id === dc.id ? "selected" : ""}`} key={dc.id} onClick={() => choose(dc)}>
