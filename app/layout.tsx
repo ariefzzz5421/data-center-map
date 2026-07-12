@@ -6,6 +6,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://data-center-map-teal.vercel.app"),
   title: "AI Infrastructure Atlas — Major Data Centers Worldwide",
   description: "Explore the world's major purpose-built AI data center campuses on an interactive 3D globe.",
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
