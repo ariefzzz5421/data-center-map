@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import type { DataCenter } from "./page";
+import type { DataCenter } from "./data-centers";
 
 type Props = { data: DataCenter[]; selected: DataCenter; onSelect: (dc: DataCenter) => void };
 
@@ -88,6 +88,7 @@ export default function GlobeScene({ data, selected, onSelect }: Props) {
         const marker = new THREE.Group();
         marker.position.copy(p);
         marker.lookAt(p.clone().multiplyScalar(2));
+        marker.scale.setScalar(THREE.MathUtils.clamp(Math.sqrt(dc.capacityMw / 350), 0.72, 1.9));
         const color = dc.status === "Operational" ? 0xb6ffd4 : dc.status === "Building" ? 0xffc66d : 0xa8c8ff;
         const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.15, 8), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.82 }));
         stem.rotation.x = Math.PI / 2;
